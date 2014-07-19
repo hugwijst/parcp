@@ -42,9 +42,7 @@ fn perm2str (perm: io::FilePermission) -> String {
 }
 
 fn path2str(info: &FileInfo) -> String {
-    use std::io::TypeDirectory;
-
-    let dir = if info.stat.kind == TypeDirectory { 'd' } else { '-' };
+    let dir = if info.stat.kind == io::TypeDirectory { 'd' } else { '-' };
     let rights = format!("{}{}", dir, perm2str(info.stat.perm));
 
     format!("{rights:s} {size:>9u} {name:s}", rights=rights, size=info.stat.size, name=info.full_path.as_str().unwrap())
@@ -74,15 +72,17 @@ fn get_dir_entries(path: Path) -> io::IoResult<Vec<FileInfo>> {
         let contents = try!(fs::readdir(&dir));
 
         for entry in contents.iter() {
-            if entry.is_dir() {
+            let entry_info = FileInfo {
+                full_path: entry.clone(),
+                rel_path: entry.path_relative_from(&path).unwrap(),
+                stat: try!(entry.lstat())
+            };
+
+            if entry_info.stat.kind == io::TypeDirectory {
                 path_queue.push_back(entry.clone());
             }
 
-            ret.push(FileInfo {
-                full_path: entry.clone(),
-                rel_path: entry.path_relative_from(&path).unwrap(),
-                stat: try!(entry.lstat()),
-            });
+            ret.push(entry_info);
         }
     }
 
@@ -93,13 +93,15 @@ fn get_paths(sources: &[String]) -> Vec<FileInfo> {
     let mut path_vecs = sources.iter()
         .map(|s| Path::new(s.clone()))
         .map(|ref path| {
-            if path.is_dir() {
+            let path_lstat = path.lstat().unwrap();
+
+            if path_lstat.kind == io::TypeDirectory {
                 get_dir_entries(path.clone()).unwrap()
             } else {
                 vec!( FileInfo {
                     full_path: path.clone(),
                     rel_path: path.dir_path(),
-                    stat: path.lstat().unwrap(),
+                    stat: path_lstat,
                 } )
             }
         });
